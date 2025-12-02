@@ -1,0 +1,32 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+*.log
+
+# Editor-specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Backup files
+*_backup.*
+*_old.*
+*.orig
+
+# Test/Research temporary files (if you want to ignore them)
+# Uncomment if you want to ignore files in Research folder
+# Research/
+
