@@ -298,7 +298,8 @@ export function applyRotationGroupBuilder(context is Context, id is Id,
 // -------------------------
 
 // Helper function to find rotation axis from a body's top face inner long edge
-// Returns a map with "axisLine" (Line) and "found" (boolean)
+// Returns a map with "axisLine" (Line), "found" (boolean), and "edge" (Query)
+// useLargerY can be undefined to use X-based selection instead of Y-based
 export function findRotationAxisFromBody(context is Context, body is Query, bodyIndex is number, useLargerX is boolean, useLargerY is boolean) returns map
 {
     // Find the top face of the body
@@ -327,7 +328,7 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
     if (topFace == undefined)
     {
         println("ERROR: Could not find top face of body at index " ~ bodyIndex);
-        return { "axisLine" : undefined, "found" : false };
+        return { "axisLine" : undefined, "found" : false, "edge" : undefined };
     }
     
     // Get all edges of the body, then filter to find edges on the top face
@@ -360,7 +361,7 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
     if (size(topFaceEdges) < 2)
     {
         println("ERROR: Could not find at least 2 edges on top face of body at index " ~ bodyIndex);
-        return { "axisLine" : undefined, "found" : false };
+        return { "axisLine" : undefined, "found" : false, "edge" : undefined };
     }
     
     // Find the longest edges (there should be 2 long edges and 2 short edges)
@@ -427,26 +428,26 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
     println("DEBUG body " ~ bodyIndex ~ ": useLargerX=" ~ useLargerX ~ ", useLargerY=" ~ useLargerY);
     
     // Select "inner" edge based on useLargerX or useLargerY parameter
-    // useLargerX: select based on X coordinate (ensures we get the broad edge, not stubby edge)
-    // useLargerY: if provided, select based on Y coordinate instead:
-    //   - useLargerY=true: select edge with larger Y (groups 1&2: further on +Y)
-    //   - useLargerY=false: select edge with smaller Y (groups 3&4: further on -Y)
+    // There are 4 edges on top of the flat bar: 2 long (broad) and 2 stubby
+    // We want one of the 2 long edges - which one depends on the group:
+    // useLargerX: must be true to ensure we get a broad edge (not stubby)
+    // useLargerY: selects which of the two long edges:
+    //   - useLargerY=true: select edge with larger Y (inner edge for groups 1&2)
+    //   - useLargerY=false: select edge with smaller Y (inner edge for groups 3&4)
     var innerLongEdge;
-    if (useLargerY != undefined)
+    if (useLargerY && useLargerX)
     {
-        // Select based on Y coordinate
-        if (useLargerY)
-        {
-            // Groups 1&2: select edge with larger Y (further on +Y)
-            innerLongEdge = longestEdgeCenterY > secondLongestEdgeCenterY ? longestEdge : secondLongestEdge;
-            println("DEBUG body " ~ bodyIndex ~ ": Selected edge with larger Y (groups 1&2)");
-        }
-        else
-        {
-            // Groups 3&4: select edge with smaller Y (further on -Y)
-            innerLongEdge = longestEdgeCenterY < secondLongestEdgeCenterY ? longestEdge : secondLongestEdge;
-            println("DEBUG body " ~ bodyIndex ~ ": Selected edge with smaller Y (groups 3&4)");
-        }
+        // Groups 1&2: select the OTHER long edge (invert the comparison to get the opposite of groups 3&4)
+        // Groups 3&4 use: longestEdgeCenterY < secondLongestEdgeCenterY ? longestEdge : secondLongestEdge
+        // So groups 1&2 need the opposite: if that would select longestEdge, we want secondLongestEdge, and vice versa
+        innerLongEdge = longestEdgeCenterY < secondLongestEdgeCenterY ? secondLongestEdge : longestEdge;
+        println("DEBUG body " ~ bodyIndex ~ ": Selected edge (inverted selection for groups 1&2 inner edge)");
+    }
+    else if (!useLargerY && useLargerX)
+    {
+        // Groups 3&4: select edge with smaller Y (inner edge for groups 3&4)
+        innerLongEdge = longestEdgeCenterY < secondLongestEdgeCenterY ? longestEdge : secondLongestEdge;
+        println("DEBUG body " ~ bodyIndex ~ ": Selected edge with smaller Y (inner edge for groups 3&4)");
     }
     else if (useLargerX)
     {
@@ -456,9 +457,9 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
     }
     else
     {
-        // The "inner" edge is the one with the SMALLER X coordinate (mirrored side)
+        // Groups 1&2: The "inner" edge is the one with the SMALLER X coordinate (the OTHER long edge)
         innerLongEdge = longestEdgeCenterX < secondLongestEdgeCenterX ? longestEdge : secondLongestEdge;
-        println("DEBUG body " ~ bodyIndex ~ ": Selected edge with smaller X");
+        println("DEBUG body " ~ bodyIndex ~ ": Selected edge with smaller X (inner edge for groups 1&2)");
     }
     
     // Verify the selected edge is actually long (broad edge, not stubby)
@@ -501,7 +502,7 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
         println("WARNING: Could not get edge vertices for body " ~ bodyIndex ~ ", using bounding box fallback");
     }
     
-    return { "axisLine" : axisLine, "found" : true };
+    return { "axisLine" : axisLine, "found" : true, "edge" : innerLongEdge };
 }
 
 // -------------------------

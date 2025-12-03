@@ -709,7 +709,7 @@ export function createCornerSegmentBodies(context is Context, baseId is Id,
     if (size(allBodiesArray) > targetBodyIndex)
     {
         const targetBody = allBodiesArray[targetBodyIndex];
-        const axisResult = findRotationAxisFromBody(context, targetBody, targetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (groups 1&2)
+        const axisResult = findRotationAxisFromBody(context, targetBody, targetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (the OTHER long edge = inner for groups 1&2)
         if (axisResult.found && axisResult.edge != undefined)
         {
             rotationAxisLine = axisResult.axisLine;
@@ -757,7 +757,7 @@ export function createCornerSegmentBodies(context is Context, baseId is Id,
     if (size(allBodiesArray) > secondTargetBodyIndex)
     {
         const secondTargetBody = allBodiesArray[secondTargetBodyIndex];
-        const axisResult2 = findRotationAxisFromBody(context, secondTargetBody, secondTargetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (groups 1&2)
+        const axisResult2 = findRotationAxisFromBody(context, secondTargetBody, secondTargetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (the OTHER long edge = inner for groups 1&2)
         if (axisResult2.found && axisResult2.edge != undefined)
         {
             secondRotationAxisLine = axisResult2.axisLine;
@@ -771,17 +771,6 @@ export function createCornerSegmentBodies(context is Context, baseId is Id,
     // Use builder pattern for first rotation (group 1)
     if (rotationAxisFound && size(allBodiesArray) >= 4)
     {
-        // Highlight all bodies in group 1 blue for visualization
-        var group1BodyQueries = [];
-        for (var i = 0; i < 4 && i < size(allBodiesArray); i += 1)
-        {
-            group1BodyQueries = append(group1BodyQueries, qEntityFilter(allBodiesArray[i], EntityType.BODY));
-        }
-        if (size(group1BodyQueries) > 0)
-        {
-            addDebugEntities(context, qUnion(group1BodyQueries), DebugColor.BLUE);
-        }
-        
         var group1 = newRotationGroupBuilder("G1");
         group1 = withNormalizedRange(group1, 0, 0.5);
         group1 = withMaxAngle(group1, 180 * degree);
@@ -1147,7 +1136,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     if (size(allBodiesArray) > targetBodyIndex)
     {
         const targetBody = allBodiesArray[targetBodyIndex];
-        const axisResult = findRotationAxisFromBody(context, targetBody, targetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (groups 1&2)
+        const axisResult = findRotationAxisFromBody(context, targetBody, targetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (the OTHER long edge = inner for groups 1&2)
         if (axisResult.found && axisResult.edge != undefined)
         {
             rotationAxisLine = axisResult.axisLine;
@@ -1195,7 +1184,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     if (size(allBodiesArray) > secondTargetBodyIndex)
     {
         const secondTargetBody = allBodiesArray[secondTargetBodyIndex];
-        const axisResult2 = findRotationAxisFromBody(context, secondTargetBody, secondTargetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (groups 1&2)
+        const axisResult2 = findRotationAxisFromBody(context, secondTargetBody, secondTargetBodyIndex, true, true); // true = use larger X (broad edge), true = use larger Y (the OTHER long edge = inner for groups 1&2)
         if (axisResult2.found && axisResult2.edge != undefined)
         {
             secondRotationAxisLine = axisResult2.axisLine;
@@ -1209,17 +1198,6 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     // Use builder pattern for first rotation (group 1)
     if (rotationAxisFound && size(allBodiesArray) >= 4)
     {
-        // Highlight all bodies in group 1 blue for visualization
-        var group1BodyQueries = [];
-        for (var i = 0; i < 4 && i < size(allBodiesArray); i += 1)
-        {
-            group1BodyQueries = append(group1BodyQueries, qEntityFilter(allBodiesArray[i], EntityType.BODY));
-        }
-        if (size(group1BodyQueries) > 0)
-        {
-            addDebugEntities(context, qUnion(group1BodyQueries), DebugColor.BLUE);
-        }
-        
         var group1 = newRotationGroupBuilder("G1");
         group1 = withNormalizedRange(group1, 0, 0.5);
         group1 = withMaxAngle(group1, 180 * degree);
@@ -1261,7 +1239,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     
     // Apply rotation groups 3 and 4 for center segments using builder pattern
     // Group 3: range 1.0-1.5, max 180°, counter-clockwise (false), indices 11-14
-    // Group 4: range 1.5-2.0, max 180°, counter-clockwise (false), indices 15-18
+    // Group 4: range 1.5-2.0, max 90°, counter-clockwise (false), indices 11-18 (includes group 3's indices)
     // NOTE: We find the axis from the duplicated bodies themselves (which are horizontal flat bars)
     // The duplicated body at index 11 corresponds to original index 0, index 12 to original 1, etc.
     // So index 13 corresponds to original index 2, and index 17 corresponds to original index 6
@@ -1360,13 +1338,19 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     }
     
     // Use builder pattern for fourth rotation (group 4)
-    // NOTE: Array only has 12 bodies (0-11), so indices 15-18 don't exist
-    // Group 4 should rotate the duplicated rectangular tubes
+    // Group 4 includes group 3's indices (11-14) plus its own indices (15-18)
+    // When group 3 is done rotating, those bodies continue with group 4
     println("DEBUG Group 4: fourthRotationAxisFound=" ~ fourthRotationAxisFound ~ ", array size=" ~ size(allBodiesArray) ~ ", need >= 19");
     if (fourthRotationAxisFound && size(allBodiesArray) > 15)
     {
-        // Only use indices that actually exist
+        // Include group 3's indices (11-14) plus group 4's indices (15-18)
         var group4Indices = [];
+        // Add group 3 indices
+        if (size(allBodiesArray) > 11) group4Indices = append(group4Indices, 11);
+        if (size(allBodiesArray) > 12) group4Indices = append(group4Indices, 12);
+        if (size(allBodiesArray) > 13) group4Indices = append(group4Indices, 13);
+        if (size(allBodiesArray) > 14) group4Indices = append(group4Indices, 14);
+        // Add group 4 indices
         if (size(allBodiesArray) > 15) group4Indices = append(group4Indices, 15);
         if (size(allBodiesArray) > 16) group4Indices = append(group4Indices, 16);
         if (size(allBodiesArray) > 17) group4Indices = append(group4Indices, 17);
@@ -1375,7 +1359,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
         println("Applying rotation group 4 with rotationNormalized34 = " ~ rotationNormalized34 ~ ", indices: " ~ toString(group4Indices));
         var group4 = newRotationGroupBuilder("G4");
         group4 = withNormalizedRange(group4, 1.5, 2.0);
-        group4 = withMaxAngle(group4, 180 * degree);
+        group4 = withMaxAngle(group4, 90 * degree); // Changed from 180 to 90 degrees total
         group4 = withClockwise(group4, false); // Counter-clockwise
         group4 = withBodyIndices(group4, group4Indices);
         group4 = withAxisLine(group4, fourthRotationAxisLine);
