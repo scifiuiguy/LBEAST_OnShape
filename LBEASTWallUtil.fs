@@ -501,7 +501,7 @@ export function findRotationAxisFromBody(context is Context, body is Query, body
         println("WARNING: Could not get edge vertices for body " ~ bodyIndex ~ ", using bounding box fallback");
     }
     
-    return { "axisLine" : axisLine, "edge" : innerLongEdge, "found" : true };
+    return { "axisLine" : axisLine, "found" : true };
 }
 
 // -------------------------
