@@ -81,6 +81,42 @@ A FeatureScript that procedurally generates a rectangular frame made of square s
 
 For troubleshooting guides and debugging best practices, see [AGENTS.md](AGENTS.md).
 
+## Development Notes: Identifying Top Horizontal Tubes in Center Segment
+
+**CRITICAL:** This process was established through iterative color-coding and user identification. Do not change the identification method without user confirmation.
+
+### Process for Identifying the Two Horizontal Tubes at Top of Center Segment
+
+The two horizontal tubes that need to be shortened at the top of the center segment are identified using the following method:
+
+1. **After all rotations are applied**, re-evaluate all bodies: `allBodiesArrayAfterRotations = evaluateQuery(context, queryAllBodies(baseId))`
+
+2. **Calculate startIndex:**
+   - `startIndex = floor(bodiesArraySize / 2) - 3` (clamped to minimum 0)
+   - This positions us 3 positions before the middle of the array, where the top-most bodies are located
+
+3. **The two target bodies are at:**
+   - **First target body:** `startIndex + 1`
+   - **Second target body:** `startIndex + 2`
+
+4. **Color-coding verification (for debugging):**
+   - Color-code 6 bodies starting from `startIndex` using: RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN
+   - The first target body (startIndex + 1) appears as **GREEN**
+   - The second target body (startIndex + 2) appears as **BLUE**
+
+5. **Face identification for shortening:**
+   - For each target body, get all faces: `qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE)`
+   - Color-code the first 6 faces to identify which face is at the "end" (furthest along the tube's length axis)
+   - Use `opMoveFace` to shorten the tube by moving the end face inward by `1x tubeWidth`
+
+### Important Notes
+
+- **DO NOT** hardcode array indices like `[1, 2]` - the indices change after rotations
+- **DO NOT** change the `startIndex` calculation without user confirmation
+- **DO NOT** remove the documentation comments that identify these bodies
+- The identification method relies on the array structure after all rotations are complete
+- If the array structure changes significantly, the identification method may need to be re-verified through color-coding
+
 ### Frame Structure
 
 The script generates a simple rectangular frame with:

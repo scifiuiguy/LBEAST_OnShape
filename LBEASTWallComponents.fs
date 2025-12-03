@@ -716,7 +716,7 @@ export function createCornerSegmentBodies(context is Context, baseId is Id,
             rotationAxisFound = true;
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult.edge, DebugColor.RED); // Disabled per user request
             
             // Add manipulator if requested (only for center wall segment)
             if (addManipulator)
@@ -764,7 +764,7 @@ export function createCornerSegmentBodies(context is Context, baseId is Id,
             secondRotationAxisFound = true;
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult2.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult2.edge, DebugColor.RED); // Disabled per user request
         }
     }
     
@@ -1067,6 +1067,140 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
         println("Moved group 4 (indices 15-18) down by 1x tubeWidth");
     }
     
+    // CRITICAL: Shorten the two horizontal tubes at the top BEFORE rotations
+    // The two horizontal tubes at the top of the center segment are at:
+    // - startIndex + 1 (first target body)
+    // - startIndex + 2 (second target body)
+    // 
+    // startIndex: The starting array index calculated as 3 positions before the middle
+    // of the array (floor(bodiesArraySize / 2) - 3), clamped to minimum 0.
+    // This identification was established through color-coding and user confirmation.
+    const bodiesArraySizeBeforeRotations = size(allBodiesArrayForAdjustments);
+    var startIndexBeforeRotations = floor(bodiesArraySizeBeforeRotations / 2) - 3;
+    if (startIndexBeforeRotations < 0)
+    {
+        startIndexBeforeRotations = 0;
+    }
+    
+    // Shorten the two horizontal tubes at the top using face index 9 (confirmed by user)
+    const horizontalIndicesToShorten = [startIndexBeforeRotations + 1, startIndexBeforeRotations + 2];
+    const targetFaceIndex = 9; // Confirmed: face index 9 is the end face to shorten
+    
+    for (var idx = 0; idx < size(horizontalIndicesToShorten); idx += 1)
+    {
+        const bodyIndex = horizontalIndicesToShorten[idx];
+        if (size(allBodiesArrayForAdjustments) > bodyIndex)
+        {
+            const body = allBodiesArrayForAdjustments[bodyIndex];
+            
+            // Get all faces on this body - use exact same pattern as vertical tubes
+            const allFaces = qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE);
+            const faceArray = evaluateQuery(context, allFaces);
+            
+            // Get face index 9 (the end face to shorten)
+            if (size(faceArray) > targetFaceIndex)
+            {
+                const endFace = faceArray[targetFaceIndex];
+                const endFaceQuery = qUnion([qEntityFilter(endFace, EntityType.FACE)]);
+                
+                // Get the face plane to determine the move direction
+                const facePlane = evPlane(context, {
+                    "face" : endFace
+                });
+                const faceNormal = facePlane.normal;
+                
+                // Move the face inward (opposite to its normal) by 1x tubeWidth
+                // Multiply each component separately to ensure proper units
+                const moveDirection = vector(-faceNormal[0] * tubeWidth, -faceNormal[1] * tubeWidth, -faceNormal[2] * tubeWidth);
+                const moveTransform = transform(moveDirection);
+                
+                opMoveFace(context, baseId + "trimHorizontalIndex" + toString(bodyIndex), {
+                    "moveFaces" : endFaceQuery,
+                    "transform" : moveTransform
+                });
+                println("Shortened horizontal body at index " ~ bodyIndex ~ " by 1x tubeWidth using face index " ~ targetFaceIndex);
+            }
+            else
+            {
+                println("WARNING: Face index " ~ targetFaceIndex ~ " does not exist for body at index " ~ bodyIndex ~ " (face array size: " ~ size(faceArray) ~ ")");
+            }
+        }
+        else
+        {
+            println("WARNING: Body index " ~ bodyIndex ~ " does not exist (array size: " ~ size(allBodiesArrayForAdjustments) ~ ")");
+        }
+    }
+    
+    // CRITICAL: Shorten indices 11 and 12 (vertical tubes in rotation group 3) at the top BEFORE rotations
+    // These indices were identified through user confirmation
+    const verticalIndicesToShorten = [11, 12];
+    const upVector = vector(0, 0, 1);
+    
+    for (var idx = 0; idx < size(verticalIndicesToShorten); idx += 1)
+    {
+        const bodyIndex = verticalIndicesToShorten[idx];
+        if (size(allBodiesArrayForAdjustments) > bodyIndex)
+        {
+            const body = allBodiesArrayForAdjustments[bodyIndex];
+            const bodyBox = evBox3d(context, {
+                "topology" : body
+            });
+            const bodyTopZ = bodyBox.maxCorner[2];
+            
+            // Get all faces on this body
+            const allFaces = qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE);
+            const faceArray = evaluateQuery(context, allFaces);
+            
+            // Find the top face using dot product
+            var topFace;
+            var maxDot = -1;
+            
+            for (var n = 0; n < size(faceArray); n += 1)
+            {
+                const face = faceArray[n];
+                const faceBox = evBox3d(context, {
+                    "topology" : face
+                });
+                
+                // Check if this face is at the top Z coordinate
+                if (abs(faceBox.maxCorner[2] - bodyTopZ) < 0.001 * inch)
+                {
+                    const facePlane = evPlane(context, {
+                        "face" : face
+                    });
+                    const faceNormal = facePlane.normal;
+                    const dotProduct = dot(faceNormal, upVector);
+                    
+                    if (dotProduct > maxDot)
+                    {
+                        maxDot = dotProduct;
+                        topFace = face;
+                    }
+                }
+            }
+            
+            // Move the top face down by 1x tubeWidth
+            if (topFace != undefined)
+            {
+                const topFaceQuery = qUnion([qEntityFilter(topFace, EntityType.FACE)]);
+                const moveTransform = transform(vector(0 * inch, 0 * inch, -tubeWidth));
+                opMoveFace(context, baseId + "trimIndex" + toString(bodyIndex), {
+                    "moveFaces" : topFaceQuery,
+                    "transform" : moveTransform
+                });
+                println("Shortened body at index " ~ bodyIndex ~ " by 1x tubeWidth at the top");
+            }
+            else
+            {
+                println("WARNING: Could not find top face for body at index " ~ bodyIndex);
+            }
+        }
+        else
+        {
+            println("WARNING: Body index " ~ bodyIndex ~ " does not exist (array size: " ~ size(allBodiesArrayForAdjustments) ~ ")");
+        }
+    }
+    
     println("Total bodies found (after adjustments, before facing direction rotation): " ~ size(allBodiesArrayForAdjustments));
     
     // Create facingDirection rotation transform
@@ -1143,7 +1277,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
             rotationAxisFound = true;
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult.edge, DebugColor.RED); // Disabled per user request
             
             // Add manipulator if requested (only for center wall segment)
             if (addManipulator)
@@ -1191,7 +1325,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
             secondRotationAxisFound = true;
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult2.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult2.edge, DebugColor.RED); // Disabled per user request
         }
     }
     
@@ -1269,7 +1403,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
             println("Found rotation axis for group 3");
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult3.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult3.edge, DebugColor.RED); // Disabled per user request
         }
         else
         {
@@ -1294,7 +1428,7 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
             println("Found rotation axis for group 4");
             
             // Highlight the edge in red for visualization
-            addDebugEntities(context, axisResult4.edge, DebugColor.RED);
+            // addDebugEntities(context, axisResult4.edge, DebugColor.RED); // Disabled per user request
         }
         else
         {
@@ -1372,7 +1506,10 @@ export function createCenterSegmentBodies(context is Context, baseId is Id,
     {
         println("Skipping rotation group 4 - fourthRotationAxisFound: " ~ fourthRotationAxisFound ~ ", array size: " ~ size(allBodiesArray));
     }
-}
+    
+    // Re-evaluate bodies after all rotations to get current state
+    const allBodiesArrayAfterRotations = evaluateQuery(context, queryAllBodies(baseId));
+    }
 
 // -------------------------
 // Both broad side faces creation
