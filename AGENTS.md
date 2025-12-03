@@ -238,6 +238,124 @@ if (topFace != undefined)
 
 ## Debugging Best Practices
 
+### CRITICAL: Spatial Debugging Workflow for Bodies and Faces
+
+**Problem:** AI agents struggle significantly with spatial/geometric reasoning. When you need to identify a specific body among many bodies, or a specific face among many faces on a body, you cannot rely on spatial logic alone.
+
+**Solution:** Use systematic color-coding with user confirmation to identify targets, then document the results clearly.
+
+#### Workflow for Identifying Specific Bodies
+
+**When to Use:** You need to target one or more specific bodies from a collection (e.g., an array of bodies after rotations).
+
+**Steps:**
+1. **Add color-coding code** that colors 6 bodies at a time using the 6 available OnShape debug colors:
+   ```javascript
+   const colors = [DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, DebugColor.YELLOW, DebugColor.MAGENTA, DebugColor.CYAN];
+   const startIndex = floor(arraySize / 2) - 3; // Position around likely target area
+   if (startIndex < 0) startIndex = 0;
+   
+   for (var i = 0; i < 6 && (startIndex + i) < arraySize; i += 1)
+   {
+       const body = bodyArray[startIndex + i];
+       addDebugEntities(context, body, colors[i]);
+   }
+   ```
+
+2. **Provide the index-to-color map in CHAT** (NOT in console with `println`):
+   ```
+   Index (startIndex): RED
+   Index (startIndex + 1): GREEN
+   Index (startIndex + 2): BLUE
+   Index (startIndex + 3): YELLOW
+   Index (startIndex + 4): MAGENTA
+   Index (startIndex + 5): CYAN
+   ```
+
+3. **Wait for user confirmation** - User will reply with the correct color(s) or index(es)
+
+4. **Remove color-coding code** and document the identified indices with clear comments:
+   ```javascript
+   // CRITICAL: The two horizontal tubes at the top of the center segment are at:
+   // - startIndex + 1 (first target body) - identified as GREEN through color-coding
+   // - startIndex + 2 (second target body) - identified as BLUE through color-coding
+   // 
+   // WARNING: Do not change these indices or remove this documentation without user confirmation.
+   // This identification was established through iterative color-coding and user verification.
+   ```
+
+#### Workflow for Identifying Specific Faces
+
+**When to Use:** You need to target a specific face on a body (e.g., the end face of a tube for `opMoveFace`).
+
+**Steps:**
+1. **Get all faces on the target body:**
+   ```javascript
+   const allFaces = qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE);
+   const faceArray = evaluateQuery(context, allFaces);
+   ```
+
+2. **Color-code the first 6 faces** (or a specific group):
+   ```javascript
+   const colors = [DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, DebugColor.YELLOW, DebugColor.MAGENTA, DebugColor.CYAN];
+   const faceGroupStart = 0; // Start with first 6, or adjust as needed
+   
+   for (var i = 0; i < 6 && (faceGroupStart + i) < size(faceArray); i += 1)
+   {
+       const face = faceArray[faceGroupStart + i];
+       addDebugEntities(context, face, colors[i]);
+   }
+   ```
+
+3. **Provide the face index-to-color map in CHAT** (NOT in console):
+   ```
+   Face 0: RED
+   Face 1: GREEN
+   Face 2: BLUE
+   Face 3: YELLOW
+   Face 4: MAGENTA
+   Face 5: CYAN
+   ```
+
+4. **Wait for user confirmation** - User will reply with:
+   - The correct color (e.g., "YELLOW")
+   - The correct face index (e.g., "face 9")
+   - Or "not in this group" to move to the next 6 faces
+
+5. **If not found in current group:**
+   - Remove current color-coding
+   - Color-code the next group of 6 faces
+   - Provide new map in chat
+   - Repeat until target is identified
+
+6. **Once identified, remove color-coding** and document the face index:
+   ```javascript
+   // CRITICAL: Face index 9 is the end face to shorten on horizontal tubes
+   // - Identified as YELLOW through iterative face color-coding
+   // - Confirmed by user through visual inspection
+   // 
+   // WARNING: Do not change this face index or remove this documentation without user confirmation.
+   ```
+
+#### Critical Rules for Agents
+
+1. **ALWAYS provide color maps in CHAT, never in console** - Use `println` for debugging, but provide the map directly in your response to the user
+2. **ALWAYS document identified indices** - Add clear comments explaining which indices were identified and how
+3. **ALWAYS add warnings** - Include comments warning future changes not to destroy the index identification comments
+4. **ALWAYS remove color-coding after identification** - Clean up debug code once the target is confirmed
+5. **NEVER guess spatial relationships** - If you're uncertain, use color-coding rather than assuming
+6. **NEVER remove index documentation comments** - These are critical for preventing future mistakes
+
+#### Why This Workflow Exists
+
+AI agents excel at theoretical and logical operations but struggle significantly with spatial/geometric reasoning. This workflow:
+- Leverages human spatial perception for identification
+- Uses systematic color-coding to narrow down candidates
+- Documents results clearly to prevent future mistakes
+- Establishes a repeatable process for similar problems
+
+**Remember:** When in doubt about spatial identification, use color-coding. It's faster and more reliable than guessing.
+
 ### Color-Coded Queries for Boolean Operations
 
 **CRITICAL:** Always use color-coded debug highlighting when working with boolean operations (union, subtraction, etc.). It is very easy to accidentally mix one object's query with another, especially when objects have been transformed or when working with multiple similar parts.

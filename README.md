@@ -81,40 +81,110 @@ A FeatureScript that procedurally generates a rectangular frame made of square s
 
 For troubleshooting guides and debugging best practices, see [AGENTS.md](AGENTS.md).
 
+## Development Notes: Spatial Debugging Workflow
+
+**CRITICAL:** When working with spatial/geometric operations, AI agents struggle with identifying specific bodies or faces among collections. The following workflow has been established to overcome this limitation through iterative color-coding and user confirmation.
+
+### Primary Debugging Techniques
+
+#### Technique 1: Identifying Specific Bodies Among Collections
+
+**Problem:** When you need to target a specific body (or bodies) from a large collection of bodies, spatial reasoning alone is insufficient.
+
+**Solution:** Color-code bodies in groups of 6 using the 6 available OnShape debug colors, then provide an index-to-color map in chat for user identification.
+
+**Workflow:**
+1. **Agent:** Add code to color-code 6 bodies at a time using `addDebugEntities` with colors: RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN
+2. **Agent:** Calculate a starting index (e.g., `startIndex = floor(arraySize / 2) - 3`) to position the color group around the likely target area
+3. **Agent:** Provide the index-to-color map in chat (NOT in console):
+   - Index (startIndex): RED
+   - Index (startIndex + 1): GREEN
+   - Index (startIndex + 2): BLUE
+   - Index (startIndex + 3): YELLOW
+   - Index (startIndex + 4): MAGENTA
+   - Index (startIndex + 5): CYAN
+4. **User:** Replies with the correct color(s) or index(es) that represent the target bodies
+5. **Agent:** Remove all color-coding code and document the correct indices with clear comments and warnings not to destroy the index comments in future changes
+
+**Example Use Case:** Identifying the two horizontal tubes at the top of the center segment (see "Identifying Top Horizontal Tubes in Center Segment" below).
+
+#### Technique 2: Identifying Specific Faces on a Body
+
+**Problem:** When you need to target a specific face from a collection of faces on a body, spatial reasoning alone is insufficient.
+
+**Solution:** Color-code faces in groups of 6 using the 6 available OnShape debug colors, then provide an index-to-color map in chat for user identification.
+
+**Workflow:**
+1. **Agent:** Get all faces on the target body: `qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE)`
+2. **Agent:** Evaluate the query to get a face array: `evaluateQuery(context, allFaces)`
+3. **Agent:** Color-code the first 6 faces (or a specific group of 6) using `addDebugEntities` with colors: RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN
+4. **Agent:** Provide the face index-to-color map in chat (NOT in console):
+   - Face 0: RED
+   - Face 1: GREEN
+   - Face 2: BLUE
+   - Face 3: YELLOW
+   - Face 4: MAGENTA
+   - Face 5: CYAN
+5. **User:** Replies with either:
+   - The correct color (e.g., "YELLOW")
+   - The correct face index (e.g., "face 9")
+   - Or "not in this group" to move to the next 6 faces
+6. **Agent:** If not found, remove current colors and color-code the next group of faces, repeating until the target is identified
+7. **Agent:** Once identified, remove all color-coding code and document the correct face index with clear comments and warnings not to destroy the index comments in future changes
+
+**Example Use Case:** Identifying face index 9 on the horizontal tubes at the top of the center segment for `opMoveFace` shortening operations.
+
+### Critical Workflow Rules
+
+1. **Always provide the color map in chat, NOT in console** - The user needs to see it immediately in the conversation
+2. **Always document the final identified indices** - Add clear comments explaining which indices were identified and how
+3. **Always add warnings** - Include comments warning future changes not to destroy the index identification comments
+4. **Always remove color-coding after identification** - Clean up debug code once the target is confirmed
+5. **Never guess** - If uncertain, use color-coding rather than assuming spatial relationships
+
+### Why This Workflow Exists
+
+AI agents excel at theoretical and logical operations but struggle significantly with spatial/geometric reasoning. This workflow bridges that gap by:
+- Leveraging human spatial perception for identification
+- Using systematic color-coding to narrow down candidates
+- Documenting results clearly to prevent future mistakes
+- Establishing a repeatable process for similar problems
+
+**Status:** This workflow has been successfully used to identify:
+- Vertical tubes in rotation group 3 (indices 11 and 12)
+- Horizontal tubes at the top of the center segment (indices `startIndex + 1` and `startIndex + 2`)
+- Face index 9 on horizontal tubes for `opMoveFace` operations
+
 ## Development Notes: Identifying Top Horizontal Tubes in Center Segment
 
-**CRITICAL:** This process was established through iterative color-coding and user identification. Do not change the identification method without user confirmation.
+**CRITICAL:** This process was established through the spatial debugging workflow documented above (see "Spatial Debugging Workflow"). Do not change the identification method without user confirmation.
 
 ### Process for Identifying the Two Horizontal Tubes at Top of Center Segment
 
-The two horizontal tubes that need to be shortened at the top of the center segment are identified using the following method:
+This is a specific example of the body identification workflow documented in "Spatial Debugging Workflow" above.
 
-1. **After all rotations are applied**, re-evaluate all bodies: `allBodiesArrayAfterRotations = evaluateQuery(context, queryAllBodies(baseId))`
-
-2. **Calculate startIndex:**
+**Identification Method:**
+1. **Calculate startIndex from pre-rotation array:**
    - `startIndex = floor(bodiesArraySize / 2) - 3` (clamped to minimum 0)
    - This positions us 3 positions before the middle of the array, where the top-most bodies are located
+   - **Note:** This is calculated from `allBodiesArrayForAdjustments` (before rotations), not after rotations
 
-3. **The two target bodies are at:**
-   - **First target body:** `startIndex + 1`
-   - **Second target body:** `startIndex + 2`
+2. **The two target bodies are at:**
+   - **First target body:** `startIndex + 1` (identified as GREEN through color-coding)
+   - **Second target body:** `startIndex + 2` (identified as BLUE through color-coding)
 
-4. **Color-coding verification (for debugging):**
-   - Color-code 6 bodies starting from `startIndex` using: RED, GREEN, BLUE, YELLOW, MAGENTA, CYAN
-   - The first target body (startIndex + 1) appears as **GREEN**
-   - The second target body (startIndex + 2) appears as **BLUE**
-
-5. **Face identification for shortening:**
+3. **Face identification for shortening:**
    - For each target body, get all faces: `qOwnedByBody(qBodyType(qEntityFilter(body, EntityType.BODY), BodyType.SOLID), EntityType.FACE)`
-   - Color-code the first 6 faces to identify which face is at the "end" (furthest along the tube's length axis)
-   - Use `opMoveFace` to shorten the tube by moving the end face inward by `1x tubeWidth`
+   - **Face index 9** was identified as the end face through iterative face color-coding (see "Spatial Debugging Workflow" above)
+   - Use `opMoveFace` to shorten the tube by moving face index 9 inward by `1x tubeWidth` using the face normal
 
 ### Important Notes
 
-- **DO NOT** hardcode array indices like `[1, 2]` - the indices change after rotations
+- **DO NOT** hardcode array indices like `[1, 2]` - the indices are calculated dynamically
 - **DO NOT** change the `startIndex` calculation without user confirmation
-- **DO NOT** remove the documentation comments that identify these bodies
-- The identification method relies on the array structure after all rotations are complete
+- **DO NOT** change face index 9 without user confirmation
+- **DO NOT** remove the documentation comments that identify these bodies and faces
+- The identification method was established through the spatial debugging workflow
 - If the array structure changes significantly, the identification method may need to be re-verified through color-coding
 
 ### Frame Structure
