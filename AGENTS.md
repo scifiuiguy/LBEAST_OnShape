@@ -7,6 +7,7 @@ This document contains troubleshooting guides, best practices, and development g
 1. [Troubleshooting Common Issues](#troubleshooting-common-issues)
 2. [Debugging Best Practices](#debugging-best-practices)
 3. [Code Quality: Preventing Duplication](#code-quality-preventing-duplication)
+4. [CRITICAL: File Change Reporting](#critical-file-change-reporting)
 
 ---
 
@@ -404,6 +405,51 @@ opBoolean(context, id + "union", {
 
 ## Code Quality: Preventing Duplication
 
+### CRITICAL: Never Duplicate Imported Functions
+
+**RULE:** Do NOT duplicate functions that are already imported from other FeatureScript files unless you have explicit permission from the user.
+
+**Why This Matters:**
+- Functions are moved to separate files (like `LBEASTWallComponents.fs` and `LBEASTWallUtil.fs`) specifically to avoid duplication
+- Duplicating imported functions defeats the purpose of modularization
+- It creates maintenance nightmares when the same function exists in multiple places
+- It causes confusion about which version is the "correct" one
+- It leads to files growing unnecessarily large (e.g., 2600+ lines when they should be much smaller)
+
+**When Duplication Might Be Acceptable:**
+- Only if you have a **really good reason** to migrate an imported function inline
+- **ALWAYS ask the user for permission first** before duplicating imported functions
+- Even then, consider if the function should be refactored instead
+
+**How to Check:**
+- Before adding any function, check if it's already imported
+- Look at the `import` statements at the top of the file
+- Check the imported files to see what functions they export
+- If a function exists in an imported file, use the imported version
+
+**Example of What NOT to Do:**
+```javascript
+// BAD: Duplicating createComposite when it's already imported from WallComponents
+import(path : "1a352bc5f15cd57be34e8ae2", version : "d709f83721fcbc8242cc7caf"); // LBEASTWallComponents
+
+// ... later in the file ...
+function createComposite(...) {  // DON'T DO THIS - it's already imported!
+    // 300+ lines of duplicate code
+}
+```
+
+**Example of What TO Do:**
+```javascript
+// GOOD: Import and use the function from WallComponents
+import(path : "1a352bc5f15cd57be34e8ae2", version : "d709f83721fcbc8242cc7caf"); // LBEASTWallComponents
+
+// ... later in the file ...
+// Just call the imported function - no duplication needed
+const result = createComposite(context, id, ...);
+```
+
+**Remember:** If a function is imported, it's imported for a reason. Don't duplicate it.
+
 ### CRITICAL: Check for Accidental Code Duplication After Every Change
 
 **Why This Matters:**
@@ -488,5 +534,50 @@ definition.facingDirection = normalizeFacingDirection(definition.facingDirection
 - Copying code blocks
 - Refactoring functions
 - Adding new parameters or logic
+
+---
+
+## CRITICAL: File Change Reporting
+
+### ALWAYS Report File Count After OnShape Script Changes
+
+**CRITICAL WORKFLOW REQUIREMENT:** When making changes to any OnShape FeatureScript file that has at least one `import` statement, you MUST inform the user at the end of your response about how many files were changed.
+
+**Why This Matters:**
+- OnShape requires manual re-import of each changed file
+- The user needs to know exactly which files to re-import
+- Files with imports may have dependencies that also need updating
+- This prevents confusion and ensures all changes are properly applied
+
+**Required Format:**
+At the end of your response, after completing any OnShape script changes, include a statement like:
+```
+**Files Changed:** [X] file(s) - [list file names]
+```
+
+**Example:**
+```
+**Files Changed:** 1 file - LBEASTWallFrameCreator.fs
+```
+
+or
+
+```
+**Files Changed:** 2 files - LBEASTWallComponents.fs, LBEASTWallUtil.fs
+```
+
+**When to Report:**
+- After ANY edit to a `.fs` file that contains `import` statements
+- Even if you only changed one file, report it
+- If you changed multiple files, list all of them
+- Include the count and the file names
+
+**What Counts as a Change:**
+- Any modification to a `.fs` file (additions, deletions, modifications)
+- Even small changes require re-import
+- File creation counts as a change
+- File deletion should also be reported
+
+**Remember:** The user manually imports each file to OnShape, so they need to know exactly what changed. Always report file changes at the end of your response.
 
 

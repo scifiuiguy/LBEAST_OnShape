@@ -81,6 +81,26 @@ A FeatureScript that procedurally generates a rectangular frame made of square s
 
 For troubleshooting guides and debugging best practices, see [AGENTS.md](AGENTS.md).
 
+### CRITICAL: Do Not Duplicate Imported Functions
+
+**IMPORTANT RULE:** Functions that are imported from other FeatureScript files (like `LBEASTWallComponents.fs` and `LBEASTWallUtil.fs`) should **NEVER** be duplicated in the importing file.
+
+**Why This Matters:**
+- Functions are separated into modular files specifically to avoid duplication
+- Duplicating imported functions defeats the purpose of code organization
+- It creates maintenance problems when the same function exists in multiple places
+- It causes files to grow unnecessarily large (e.g., 2600+ lines when they should be much smaller)
+- It leads to confusion about which version is correct
+
+**The Rule:**
+- If a function is imported, use the imported version - do not duplicate it
+- If you have a really good reason to migrate an imported function inline, **ask permission first**
+- Even then, consider if refactoring the imported function would be better than duplicating it
+
+**Files That Import Functions:**
+- `LBEASTWallFrameCreator.fs` imports from `LBEASTWallComponents.fs` and `LBEASTWallUtil.fs`
+- All helper functions (createComposite, createUpperFramePiece, createEndFaceJoiner, etc.) should be imported, not duplicated
+
 ## Development Notes: Spatial Debugging Workflow
 
 **CRITICAL:** When working with spatial/geometric operations, AI agents struggle with identifying specific bodies or faces among collections. The following workflow has been established to overcome this limitation through iterative color-coding and user confirmation.
