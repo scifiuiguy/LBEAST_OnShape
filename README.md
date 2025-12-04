@@ -18,6 +18,28 @@ In that spirit, LBEAST includes procedural CAD models built in OnShape that demo
 
 The procedural nature of these models allows rapid iteration and customization without manual CAD work, reducing both design time and manufacturing costs.
 
+## Getting Started
+
+### Installing Wall Frame Creator FeatureScripts
+
+To use the LBEAST Wall Frame Creator feature in OnShape, you need to install three FeatureScript files:
+
+1. Open a free OnShape account if you don't have one yet: https://onshape.com
+2. Launch a new OnShape document.
+3. In the bottom-left corner, click **'+'** → **Create Feature Studio**.
+4. A new tab will appear in the bottom tab panel called **'Feature Studio 1'**.
+5. Right-click the **'Feature Studio 1'** tab and rename it **'LBEASTWallFrameCreator'**.
+6. Repeat steps 4 & 5 to create new tabs for **'LBEASTWallUtil'** and **'LBEASTWallComponents'**.
+7. Paste the contents of each of those three files from the LBEAST_OnShape repo and click **'Commit'** for each.
+8. **LBEASTWallFrameCreator** imports the other two. Since you just created fresh copies of each file, the imports will fail until you reference those new file IDs. Copy the number at the end of the URL for **'LBEASTWallUtil'** and paste it into the import line in **LBEASTWallFrameCreator**:
+
+   ```javascript
+   import(path : "1a352bc5f15cd57be34e8ae2", version : "2d512763c2cdc696a8563fb5");
+   //        [^ PASTE YOUR FILE ID HERE]    [^ ONSHAPE AUTOGENERATES W/ YOUR FILE ID]
+   ```
+
+9. Copy the ID at the end of the URL for **'LBEASTWallComponents'** and paste it into the appropriate import line in **'LBEASTWallFrameCreator'** (like in step 8).
+
 ## Rectangular Frame
 
 **File:** `RectangularFrame.fs`

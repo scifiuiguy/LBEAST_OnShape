@@ -5,9 +5,10 @@ This document contains troubleshooting guides, best practices, and development g
 ## Table of Contents
 
 1. [Troubleshooting Common Issues](#troubleshooting-common-issues)
-2. [Debugging Best Practices](#debugging-best-practices)
-3. [Code Quality: Preventing Duplication](#code-quality-preventing-duplication)
-4. [CRITICAL: File Change Reporting](#critical-file-change-reporting)
+2. [FeatureScript API Patterns and Best Practices](#featurescript-api-patterns-and-best-practices)
+3. [Debugging Best Practices](#debugging-best-practices)
+4. [Code Quality: Preventing Duplication](#code-quality-preventing-duplication)
+5. [CRITICAL: File Change Reporting](#critical-file-change-reporting)
 
 ---
 
@@ -235,6 +236,60 @@ if (topFace != undefined)
 - **"Invalid enum access"**: Check that the enum value exists (e.g., `DebugColor.PURPLE` doesn't exist, use `DebugColor.MAGENTA` instead).
 - **"Call addDebugEntities(...) does not match"**: Check the function signature - `addDebugEntities` takes `(context, query, DebugColor)` where `DebugColor` is an enum, not a map.
 
+### Common Errors and Solutions
+
+1. **"Precondition of skRectangle failed" or "Precondition of skCircle failed"**
+   - Solution: Ensure sketch coordinates have units: `vector(0 * inch, 0 * inch)`
+
+2. **"EXTRUDE_FAILED"**
+   - Solution: Use `qSketchRegion(sketchId)` directly, not `qCreatedBy` with `EntityType.FACE`
+   - Ensure direction vector is unitless (normalized)
+
+3. **"Extrude direction not working / always extrudes in wrong direction"**
+   - CRITICAL: OnShape IGNORES literal direction vectors like `vector(0, 0, -1)`
+   - Solution: ALWAYS calculate direction from two points:
+     ```javascript
+     const delta = endPoint - startPoint;
+     const direction = normalize(delta);
+     ```
+   - This is the ONLY reliable way to control extrude direction
+   - `oppositeDirection` parameter does NOT work reliably
+   - Sketch plane normal inversion does NOT control extrude direction
+
+4. **"BOOLEAN_INPUTS_NOT_SOLID"**
+   - Solution: Use `qBodyType(query, BodyType.SOLID)` to filter for solid bodies only
+
+5. **"@opBoolean: BOOLEAN_BAD_INPUT" (for UNION operations)**
+   - CRITICAL: OnShape auto-merges overlapping bodies during `opExtrude`
+   - Solution: Add `"operationType" : NewBodyOperationType.NEW` to ALL `opExtrude` calls that create bodies you want to union later
+   - For UNION operations, use `qUnion` in tools parameter (no targets):
+     ```javascript
+     opBoolean(context, id + "union", {
+         "tools" : qUnion([body1, body2]),
+         "operationType" : BooleanOperationType.UNION
+     });
+     ```
+   - For SUBTRACTION operations, use tools/targets pattern:
+     ```javascript
+     opBoolean(context, id + "subtract", {
+         "tools" : toolBody,
+         "operationType" : BooleanOperationType.SUBTRACTION,
+         "targets" : targetBody
+     });
+     ```
+
+6. **"Function opBox with 3 args not found"**
+   - Solution: Don't use `opBox` - use sketch + extrude pattern instead
+
+7. **"Precondition of newSketch failed"**
+   - Solution: Use `newSketchOnPlane` when you have a Plane object
+
+8. **Parameters defaulting to 1 inch instead of desired values**
+   - Solution: Add explicit initialization in function body AND editingLogic
+
+9. **"Invalid enum access: EntityType.SKETCH"**
+   - Solution: `EntityType.SKETCH` doesn't exist - use `EntityType.BODY` for queries
+
 ---
 
 ## Debugging Best Practices
@@ -400,6 +455,317 @@ opBoolean(context, id + "union", {
 - Assuming object names match their visual positions after transformations
 
 **Lesson Learned:** In `LBEASTWallFrameCreator`, tube extensions were being unioned with tubes on opposite sides of the frame because queries were swapped. Color-coded debugging immediately revealed the mismatch and saved significant debugging time.
+
+---
+
+## FeatureScript API Patterns and Best Practices
+
+### Basic Structure
+
+- **FeatureScript version:** 2384 (current)
+- **Required imports:**
+  - `onshape/std/geometry.fs`
+  - `onshape/std/sketch.fs`
+  - `onshape/std/transform.fs` (for transforms/duplications)
+
+- **Feature definition pattern:**
+  ```javascript
+  annotation { "Feature Type Name" : "Your Feature Name" }
+  export const yourFeature = defineFeature(function(context is Context, id is Id, definition is map)
+      precondition { ... }
+      { ... }
+      { editingLogic : function(context is Context, definition is map) returns map { ... } }
+  );
+  ```
+
+### Parameter Definition
+
+- **Length parameters** use `LengthBoundSpec` with `[min, default, max]` format:
+  ```javascript
+  annotation { "Name" : "Parameter Name" }
+  isLength(definition.paramName, { (inch) : [min, default, max] } as LengthBoundSpec);
+  ```
+
+- **Integer parameters** use `IntegerBoundSpec`:
+  ```javascript
+  annotation { "Name" : "Parameter Name" }
+  isInteger(definition.paramName, { (unitless) : [min, default, max] } as IntegerBoundSpec);
+  ```
+
+- **Boolean parameters:**
+  ```javascript
+  annotation { "Name" : "Parameter Name" }
+  definition.paramName is boolean;
+  ```
+
+- **CRITICAL: OnShape defaults to 1 inch for length parameters if not properly set.**
+  Always override 1 inch values in the function body and editingLogic:
+  ```javascript
+  if (definition.paramName == undefined || definition.paramName == 0 * inch)
+  {
+      definition.paramName = desiredDefault;
+  }
+  else if (definition.paramName == 1 * inch)
+  {
+      definition.paramName = desiredDefault; // Override OnShape's fallback
+  }
+  ```
+
+- `LengthBoundSpec` in precondition sets GUI defaults, but you still need explicit initialization in the function body to handle OnShape's 1 inch fallback.
+
+### Creating Hollow Tubes (Square Steel Tube Pattern)
+
+**Pattern:** Extrude outer solid, extrude inner solid (full length), then boolean subtract.
+
+1. **Calculate dimensions:**
+   ```javascript
+   const innerWidth = tubeWidth - 2 * wallThickness;
+   const halfTube = tubeWidth / 2;
+   const halfInner = innerWidth / 2;
+   const zero = 0 * inch;
+   ```
+
+2. **Determine sketch plane based on tube direction:**
+   - For axis-aligned tubes, use world coordinate planes
+   - X-axis tube: sketch in YZ plane (normal = X)
+   - Y-axis tube: sketch in XZ plane (normal = Y)
+   - Z-axis tube: sketch in XY plane (normal = Z)
+   
+   ```javascript
+   var sketchPlane;
+   const absX = abs(direction[0]);
+   const absY = abs(direction[1]);
+   const absZ = abs(direction[2]);
+   
+   if (absX > absY && absX > absZ)
+   {
+       sketchPlane = plane(startPoint, vector(1, 0, 0)); // YZ plane
+   }
+   else if (absY > absZ)
+   {
+       sketchPlane = plane(startPoint, vector(0, 1, 0)); // XZ plane
+   }
+   else
+   {
+       sketchPlane = plane(startPoint, vector(0, 0, 1)); // XY plane
+   }
+   ```
+
+3. **Create outer rectangle sketch:**
+   ```javascript
+   const outerSketchId = id + "outerSketch";
+   const outerSketch = newSketchOnPlane(context, outerSketchId, {
+       "sketchPlane" : sketchPlane
+   });
+   skRectangle(outerSketch, "outerRect", {
+       "firstCorner" : vector(-halfTube, -halfTube),
+       "secondCorner" : vector(halfTube, halfTube)
+   });
+   skSolve(outerSketch);
+   ```
+
+4. **Extrude outer rectangle:**
+   ```javascript
+   const outerRegions = qSketchRegion(outerSketchId);
+   opExtrude(context, id + "outer", {
+       "entities" : outerRegions,
+       "direction" : direction, // Normalized unit vector
+       "endBound" : BoundingType.BLIND,
+       "endDepth" : length // Length with units
+   });
+   ```
+
+5. **Create inner rectangle sketch (same plane):**
+   ```javascript
+   const innerSketchId = id + "innerSketch";
+   const innerSketch = newSketchOnPlane(context, innerSketchId, {
+       "sketchPlane" : sketchPlane
+   });
+   skRectangle(innerSketch, "innerRect", {
+       "firstCorner" : vector(-halfInner, -halfInner),
+       "secondCorner" : vector(halfInner, halfInner)
+   });
+   skSolve(innerSketch);
+   ```
+
+6. **Extrude inner rectangle (full length):**
+   ```javascript
+   const innerRegions = qSketchRegion(innerSketchId);
+   opExtrude(context, id + "inner", {
+       "entities" : innerRegions,
+       "direction" : direction,
+       "endBound" : BoundingType.BLIND,
+       "endDepth" : length
+   });
+   ```
+
+7. **Boolean subtract inner from outer:**
+   ```javascript
+   opBoolean(context, id + "subtract", {
+       "tools" : qCreatedBy(id + "inner", EntityType.BODY),
+       "operationType" : BooleanOperationType.SUBTRACTION,
+       "targets" : qCreatedBy(id + "outer", EntityType.BODY)
+   });
+   ```
+
+### Sketch Coordinates
+
+- **CRITICAL: Sketch coordinates MUST have units, even though they're 2D points!**
+- ✅ **Correct:** `vector(0 * inch, 0 * inch)` for sketch center
+- ❌ **Incorrect:** `vector(0, 0)` - will fail `is2dPoint()` precondition
+- **Example for skCircle:**
+  ```javascript
+  const circleCenter2D = vector(0 * inch, 0 * inch);
+  skCircle(sketch, "circle1", {
+      "center" : circleCenter2D,
+      "radius" : radius
+  });
+  ```
+
+### Sketch Plane Creation
+
+- Use `newSketchOnPlane` (NOT `newSketch`) when you have a Plane object
+- `newSketch` expects a Query, `newSketchOnPlane` expects a Plane
+- **Pattern:**
+  ```javascript
+  const sketchPlane = plane(point, normal);
+  const sketch = newSketchOnPlane(context, sketchId, {
+      "sketchPlane" : sketchPlane
+  });
+  ```
+
+### opExtrude Direction Control - CRITICAL Pattern
+
+- **CRITICAL: OnShape's opExtrude IGNORES literal direction vectors!**
+  - Using `vector(0, 0, -1)` directly will NOT extrude downward
+  - The `oppositeDirection` parameter also does NOT work reliably
+  - Sketch plane normal inversion does NOT control extrude direction
+
+- **CORRECT PATTERN: Calculate direction from two points (start and end)**
+  This is the ONLY reliable way to control extrude direction:
+  
+  ```javascript
+  const startPoint = sketchCenter;
+  const endPoint = sketchCenter + vector(0 * inch, 0 * inch, -depth);
+  const delta = endPoint - startPoint;
+  const direction = normalize(delta); // This WILL respect the direction!
+  
+  opExtrude(context, id + "extrude", {
+      "entities" : sketchRegions,
+      "direction" : direction, // Calculated from points - this works!
+      "endBound" : BoundingType.BLIND,
+      "endDepth" : depth
+  });
+  ```
+
+- **Why this works:** OnShape treats direction vectors calculated from points differently than literal vectors. Always calculate direction from start/end points.
+
+- **Pattern used in all working scripts (createTube, etc.):**
+  ```javascript
+  const delta = endPoint - startPoint;
+  const direction = normalize(delta);
+  // Then use direction in opExtrude
+  ```
+
+### Querying Bodies for Boolean Operations
+
+- **CRITICAL: Use qBodyType to filter for solid bodies only**
+- Boolean operations require solid bodies, not surfaces or other entity types
+- **Pattern:**
+  ```javascript
+  const targetBodies = qBodyType(qCreatedBy(id + "feature", EntityType.BODY), BodyType.SOLID);
+  const toolBodies = qBodyType(qCreatedBy(id + "tool", EntityType.BODY), BodyType.SOLID);
+  opBoolean(context, id + "boolean", {
+      "tools" : toolBodies,
+      "operationType" : BooleanOperationType.SUBTRACTION,
+      "targets" : targetBodies
+  });
+  ```
+
+### Sketch Cleanup
+
+- Sketches can be deleted after use to reduce feature tree clutter
+- **Pattern (with error handling):**
+  ```javascript
+  try
+  {
+      opDeleteBodies(context, id + "deleteSketch", {
+          "entities" : qCreatedBy(sketchId, EntityType.BODY)
+      });
+  }
+  catch
+  {
+      // Sketches may not be deletable - this is okay, they're just in feature history
+  }
+  ```
+- **Note:** OnShape may keep sketches in feature history regardless, but attempting deletion is good practice for cleaner feature trees.
+
+### Vector Arithmetic
+
+- All vector components must have units when creating vectors with units
+- **Example:** `vector(offsetX, offsetY, offsetZ)` where all are `ValueWithUnits`
+- **Zero vector:** `const zero = 0 * inch;`
+- **Vector addition:** `baseOffset + vector(x, y, z)` works correctly
+- **Direction vectors for extrude should be unitless (normalized):**
+  ```javascript
+  const direction = normalize(delta); // Unitless unit vector
+  ```
+
+### Coordinate System
+
+- OnShape uses right-handed coordinate system
+- Z is typically "up" in most contexts
+- When creating frames:
+  - X = width (horizontal)
+  - Y = depth (horizontal, perpendicular to width)
+  - Z = height (vertical)
+
+### Procedural Duplication
+
+- Use nested loops for multi-axis duplication:
+  ```javascript
+  for (var i = 0; i < totalOnX; i += 1)
+  {
+      for (var j = 0; j < totalOnY; j += 1)
+      {
+          for (var k = 0; k < totalOnZ; k += 1)
+          {
+              const offsetX = i * frameWidth;
+              const offsetY = j * frameDepth;
+              const offsetZ = k * frameHeight;
+              const baseOffset = vector(offsetX, offsetY, offsetZ);
+              const instanceId = id + "x" + i + "y" + j + "z" + k;
+              // Create geometry with baseOffset applied
+          }
+      }
+  }
+  ```
+
+### Debugging Patterns
+
+- Add boolean debug parameters to conditionally skip operations:
+  ```javascript
+  if (!definition.debugCuts)
+  {
+      opBoolean(...); // Skip boolean to see tool geometry
+  }
+  ```
+- This allows inspection of intermediate geometry before boolean operations
+
+### Best Practices
+
+1. Always use descriptive ID suffixes: `id + "outer"`, `id + "inner"`, `id + "subtract"`
+2. Calculate all dimensions upfront: `halfTube`, `halfInner`, `innerWidth`, etc.
+3. Use helper functions for repeated patterns (e.g., `createTube`)
+4. Apply `baseOffset` to all geometry positions when duplicating
+5. Use unique instance IDs when duplicating: `id + "x" + i + "y" + j + "z" + k`
+6. Clean up sketches after use (with try/catch for safety)
+7. Always filter boolean inputs with `qBodyType` for solid bodies
+8. Use `LengthBoundSpec` in precondition for GUI defaults
+9. Override 1 inch fallback values in both function body and editingLogic
+10. For bodies that will be unioned later, ALWAYS use `"operationType" : NewBodyOperationType.NEW` in `opExtrude` to prevent auto-merging
+11. For UNION operations, use `qUnion([body1, body2])` in tools parameter (no targets)
+12. For SUBTRACTION operations, use tools/targets pattern
 
 ---
 
