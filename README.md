@@ -92,6 +92,8 @@ A FeatureScript that procedurally generates a rectangular frame made of square s
    - **Frame Height (Z):** Adjust the overall frame height
 8. Modify any parameters as needed
 9. Click **"Accept"** to generate the frame
+10. Select the Part Studio in which you'd like to create a wall frame. At the far right end of the main toolbar, you should see a cube icon wrapped in curly braces with a dropdown arrow. That's the Custom Features menu. Drop it down. If the featurescripts you've just install have successfully compiled, you should see a new custom feature called LBEAST Wall Frame Creator. Click it.
+11. The default wall frame should appear in your viewport, and it's parameters will appear in a configurable dialog box. You can set the width and thickness of the tubes that make up the frame. You can set widths, heights, and depths for various components as well.
 
 #### Step 5: View and Edit
 
