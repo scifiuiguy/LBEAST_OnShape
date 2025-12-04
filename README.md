@@ -42,6 +42,7 @@ To use the LBEAST Wall Frame Creator feature in OnShape, you need to install thr
 9. Copy the ID at the end of the URL for **'LBEASTWallComponents'** and paste it into the appropriate import line in **'LBEASTWallFrameCreator'** (like in step 8).
 10. Select the Part Studio in which you'd like to create a wall frame. At the far right end of the main toolbar, you should see a cube icon wrapped in curly braces with a dropdown arrow. That's the Custom Features menu. Drop it down. If the featurescripts you've just install have successfully compiled, you should see a new custom feature called LBEAST Wall Frame Creator. Click it.
 11. The default wall frame should appear in your viewport, and it's parameters will appear in a configurable dialog box. You can set the width and thickness of the tubes that make up the frame. You can set widths, heights, and depths for various components as well.
+12. Just above the frame model, drag the manipulator arrow slowly upward to observe how it collapses into and easily transportable package. 
 
 ## Rectangular Frame
 
